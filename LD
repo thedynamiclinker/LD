@@ -35,11 +35,15 @@ trap 'rm -f "$output"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 NSH_PROGRAM=$program "${LD_RUNNER:-lordhavemercy}" -- \
-    'Compile the English source above. Emit exactly one complete POSIX shell script starting with #!/bin/sh, without Markdown or explanation.' \
+    'Compile the English source above. Emit one complete shell script starting with #!/bin/sh or #!/bin/bash, without Markdown or explanation.' \
     "$@" > "$output"
 IFS= read -r first < "$output" || first=
-if [ "$first" != '#!/bin/sh' ] || ! /bin/sh -n "$output"; then
-    printf '%s\n' 'LD: the runner did not return one POSIX shell script' >&2
-    exit 1
-fi
+case "$first" in
+    '#!/bin/sh') /bin/sh -n "$output" ;;
+    '#!/bin/bash') bash -n "$output" ;;
+    *)
+        printf '%s\n' 'LD: the runner did not return one shell script' >&2
+        exit 1
+        ;;
+esac
 cat "$output"

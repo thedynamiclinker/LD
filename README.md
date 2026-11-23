@@ -3,7 +3,7 @@
 LD loads an English source file and emits one shell implementation to stdout.
 
 ~~~sh
-LD NSH > nsh.new && sh -n nsh.new
+LD NSH > nsh.new
 ~~~
 
 Put **#!/bin/LD** on the first line in ix. Use **#!/usr/bin/env LD** when
