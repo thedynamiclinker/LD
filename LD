@@ -1,0 +1,45 @@
+#!/bin/sh
+set -eu
+
+usage() {
+    printf '%s\n' 'usage: LD [--] PROGRAM [REQUEST ...]' \
+        'Generate one shell file with LD_RUNNER (default lordhavemercy).'
+}
+
+case "${1:-}" in
+    -h|--help) usage; exit ;;
+    --) shift ;;
+esac
+if [ "$#" -eq 0 ]; then
+    usage >&2
+    exit 2
+fi
+
+program=$1
+shift
+if [ ! -f "$program" ] && [ "${program#*/}" = "$program" ]; then
+    if resolved=$(command -v "$program"); then
+        program=$resolved
+    fi
+fi
+if [ ! -f "$program" ] || [ ! -r "$program" ]; then
+    printf 'LD: expected a readable prose program: %s\n' "$program" >&2
+    exit 2
+fi
+
+if [ "${1:-}" = -- ]; then
+    shift
+fi
+output=$(mktemp)
+trap 'rm -f "$output"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+NSH_PROGRAM=$program "${LD_RUNNER:-lordhavemercy}" -- \
+    'Compile the English source above. Emit exactly one complete POSIX shell script starting with #!/bin/sh, without Markdown or explanation.' \
+    "$@" > "$output"
+IFS= read -r first < "$output" || first=
+if [ "$first" != '#!/bin/sh' ] || ! /bin/sh -n "$output"; then
+    printf '%s\n' 'LD: the runner did not return one POSIX shell script' >&2
+    exit 1
+fi
+cat "$output"
