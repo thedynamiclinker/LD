@@ -2,48 +2,89 @@
 set -eu
 
 usage() {
-    printf '%s\n' 'usage: LD [--] PROGRAM [REQUEST ...]' \
-        'Generate one shell file with LD_RUNNER (default lordhavemercy).'
+    printf '%s\n' 'LD [--] PROGRAM [ARG ...]' \
+        'LD --compile PROGRAM [REQUEST ...]   emit validated sh or Bash source' \
+        'LD --link NAME INTERPRETER SOURCE    install a source file as an executable' \
+        'Use #!/bin/LD or #!/usr/bin/env LD to make a prose program executable.'
 }
-
+die() { printf 'LD: %s\n' "$*" >&2; exit 2; }
+runner=${LD_RUNNER:-${LORD_RUNNER:-lord}}
+action=run
 case "${1:-}" in
-    -h|--help) usage; exit ;;
+    -h|--help|'') usage; exit ;;
+    --compile|--link) action=${1#--}; shift ;;
     --) shift ;;
 esac
-if [ "$#" -eq 0 ]; then
-    usage >&2
-    exit 2
+
+if [ "$action" = link ]; then
+    [ "$#" -eq 3 ] || die 'expected NAME INTERPRETER SOURCE'
+    name=$1 interpreter=$2 source=$3
+    case $name in ''|.*|*[!a-zA-Z0-9_.-]*) die "invalid command name: $name" ;; esac
+    interpreter=$(command -v "$interpreter") || die "interpreter unavailable: $2"
+    case $interpreter in /*) ;; *) interpreter=$PWD/$interpreter ;; esac
+    case $interpreter in *[[:space:]]*) die "invalid shebang path: $interpreter" ;; esac
+    [ -f "$source" ] && [ -r "$source" ] || die "cannot read $source"
+    bindir=${LD_BINDIR:-$HOME/.local/bin}
+    mkdir -p "$bindir"
+    stage=$(mktemp -d "$bindir/.LD.XXXXXXXX")
+    trap 'rm -rf -- "$stage"' 0
+    {
+        printf '#!%s\n' "$interpreter"
+        awk 'NR != 1 || !/^#!/' "$source"
+    } > "$stage/file"
+    chmod 755 "$stage/file"
+    # Publish a new name atomically, leaving an existing command in place.
+    ln -T -- "$stage/file" "$bindir/$name" || die "cannot install $bindir/$name"
+    printf '%s\n' "$bindir/$name"
+    exit
 fi
 
+[ "$#" -gt 0 ] || die 'expected PROGRAM'
 program=$1
 shift
 if [ ! -f "$program" ] && [ "${program#*/}" = "$program" ]; then
-    if resolved=$(command -v "$program"); then
-        program=$resolved
-    fi
+    program=$(command -v "$program") || die "cannot find $1"
 fi
-if [ ! -f "$program" ] || [ ! -r "$program" ]; then
-    printf 'LD: expected a readable prose program: %s\n' "$program" >&2
-    exit 2
+[ -f "$program" ] && [ -r "$program" ] || die "cannot read $program"
+case $program in /*) ;; *) program=$PWD/$program ;; esac
+if [ "${1:-}" = -- ]; then shift; fi
+
+if [ "$action" = compile ]; then
+    output=$(mktemp)
+    trap 'rm -f -- "$output"' 0
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    "${LD_RUNNER:-lordhavemercy}" --permission text --program "$program" -- \
+        'Compile the source into one complete shell script with #!/bin/sh or #!/bin/bash. Return only source.' \
+        "$@" > "$output"
+    IFS= read -r first < "$output" || first=
+    case "$first" in
+        '#!/bin/sh') sh -n "$output" ;;
+        '#!/bin/bash') bash -n "$output" ;;
+        *) die 'the runner did not return a shell script' ;;
+    esac
+    exec_status=0
+    cat "$output" || exec_status=$?
+    exit "$exec_status"
 fi
 
-if [ "${1:-}" = -- ]; then
-    shift
-fi
-output=$(mktemp)
-trap 'rm -f "$output"' EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
-NSH_PROGRAM=$program "${LD_RUNNER:-lordhavemercy}" -- \
-    'Compile the English source above. Emit one complete shell script starting with #!/bin/sh or #!/bin/bash, without Markdown or explanation.' \
-    "$@" > "$output"
-IFS= read -r first < "$output" || first=
-case "$first" in
-    '#!/bin/sh') /bin/sh -n "$output" ;;
-    '#!/bin/bash') bash -n "$output" ;;
-    *)
-        printf '%s\n' 'LD: the runner did not return one shell script' >&2
-        exit 1
-        ;;
+# A shebang names a program and, at most, a single argument. Handle env's
+# portable single-name form explicitly. Arguments remain separate throughout.
+IFS= read -r first < "$program" || :
+case $first in
+    '#!'*)
+        IFS=' 	' read -r interpreter option <<EOF_SHEBANG
+${first#\#!}
+EOF_SHEBANG
+        case $interpreter in
+            */env) interpreter=$option; option= ;;
+        esac
+        case ${interpreter##*/} in
+            LD|nsh-ld|'#!'|'') ;;
+            *)
+                if [ -n "$option" ]; then set -- "$option" "$program" "$@"
+                else set -- "$program" "$@"; fi
+                exec lord-run "$interpreter" "$@" ;;
+        esac ;;
 esac
-cat "$output"
+exec "$runner" --program "$program" -- "$@"

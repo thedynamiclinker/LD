@@ -1,11 +1,26 @@
 # LD
 
-LD loads an English source file and emits one shell implementation to stdout.
+`LD FILE ARG ...` loads a readable prose program with `lord`. The file
+supplies instructions, argv supplies the request, and stdin supplies input.
+An ordinary native shebang selects that interpreter. `#!/bin/LD` and
+`#!/usr/bin/env LD` select the prose loader. `#!` and `nsh-ld` alias LD.
 
-~~~sh
-LD NSH > nsh.new
-~~~
+`ATA` runs the general-purpose [ATA program](share/new-world/ATA.md).
+The dialects also use those instructions.
 
-Put **#!/bin/LD** on the first line in ix. Use **#!/usr/bin/env LD** when
-installing into another prefix. LD_RUNNER selects a lord name and defaults
-to lordhavemercy. Any subsequent arguments describe the requested build.
+```sh
+LD instructions.md request
+LD --compile instructions.md > program.sh
+LD --link my-program LD instructions.md
+LD --link my-filter sh program.sh
+```
+
+`--compile` asks for a complete shell program and checks its syntax before
+emitting it. `LD_RUNNER` selects a runner. By default compilation uses
+`lordhavemercy` and execution uses `lord`. `--link` installs an executable
+with the specified interpreter under `${LD_BINDIR:-$HOME/.local/bin}`.
+Choose an available destination name.
+
+`make install` and `make develop` install the `lord` dependency.
+`make uninstall` removes this package's files. `make clean` is available
+for the source-only checkout.
