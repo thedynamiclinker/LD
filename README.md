@@ -9,10 +9,11 @@ An ordinary native shebang selects that interpreter. `#!/bin/LD` and
 The dialects also use those instructions.
 
 ```sh
-LD instructions.md request
-LD --compile instructions.md > program.sh
+LD --effort 3 --permission read instructions.md request
+LD --effort 4 --compile instructions.md > program.sh
 LD --link my-program LD instructions.md
 LD --link my-filter sh program.sh
+LD --native printf '%s\n' hello
 ```
 
 `--compile` asks for a complete shell program and checks its syntax before
